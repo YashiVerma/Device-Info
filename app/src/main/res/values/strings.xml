@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">DeviceInfo</string>
+    <string name="permissions_not_granted">permissions_not_granted_read_phone_state</string>
+    <string name="permissions_rationale">permissions_rationale</string>
+</resources>
