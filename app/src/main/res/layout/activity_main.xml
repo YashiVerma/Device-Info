@@ -11,11 +11,12 @@
     tools:context=".MainActivity">
 
     <Button
-        android:id="@+id/getSystemInfo"
-        android:layout_width="match_parent"
+        android:id="@+id/exportFile"
+        android:layout_width="fill_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="top"
         android:padding="16dp"
-        android:text="Get Android System Info"
+        android:text="Export to one file"
         app:backgroundTint="@color/black" />
 
     <TextView
@@ -132,12 +133,5 @@
         android:background="#A10399" />
 
 
-    <Button
-        android:id="@+id/exportFile"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:padding="16dp"
-        android:text="Export to one file"
-        app:backgroundTint="@color/black" />
+
 </LinearLayout>

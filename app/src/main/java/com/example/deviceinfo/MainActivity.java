@@ -1,28 +1,34 @@
 package com.example.deviceinfo;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothManager;
-import android.content.BroadcastReceiver;
+
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
-import android.content.res.Resources;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
+import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.telephony.CellInfo;
 import android.telephony.CellInfoCdma;
@@ -35,15 +41,29 @@ import android.telephony.CellSignalStrengthLte;
 import android.telephony.CellSignalStrengthWcdma;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.PendingResult;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.Status;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResult;
+import com.google.android.gms.location.LocationSettingsStates;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.util.Collections;
@@ -53,10 +73,12 @@ import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
 
 
-public class MainActivity extends AppCompatActivity {
+
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener  {
 
 
     private static final int PERMISSIONS_REQUEST_CODE = 0;
+    private static final int WRITE_PERMISSION_REQUEST_CODE = 100;
 
 
     TextView Imsi;
@@ -69,11 +91,11 @@ public class MainActivity extends AppCompatActivity {
     private IntentFilter mIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 
 
+    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button BtnSysInfo = (Button) findViewById(R.id.getSystemInfo);
         Button BtnExportFile = (Button) findViewById(R.id.exportFile);
         Imei = (TextView) findViewById(R.id.imei);
         Imsi = (TextView) findViewById(R.id.imsi);
@@ -84,22 +106,15 @@ public class MainActivity extends AppCompatActivity {
         final TextView Model = (TextView) findViewById(R.id.model);
         Wifi = (TextView) findViewById(R.id.wifi);
         Cellular = (TextView) findViewById(R.id.cellular);
+        loadInfo();
+        final LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+            getCellInfo();
+        else
+            EnableGPSAutoMatically();
 
+        getBluetoothMacAddress();
 
-
-        statusCheck();
-
-        BtnSysInfo.setOnClickListener(new View.OnClickListener() {
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onClick(View v) {
-
-
-                TelephonyManager mTelephony = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE);
-
-                loadInfo();
-                getBluetoothMacAddress();
-                getCellInfo();
 
 
                 String lStRWifiMac = getWifiMacAddress();
@@ -115,7 +130,7 @@ public class MainActivity extends AppCompatActivity {
                 int androidVersion = Build.VERSION.SDK_INT;
                 switch (androidVersion) {
                     case 14:
-                        lStrVersionName = "15, Ice Cream Sandwich";
+                        lStrVersionName = "14, Ice Cream Sandwich";
                         break;
                     case 15:
                         lStrVersionName = "15, Ice Cream Sandwich";
@@ -169,56 +184,88 @@ public class MainActivity extends AppCompatActivity {
                 Model.setText("Model  :  " + Build.MODEL);
 
 
-            }
-        });
+
 
         //export data to file
         BtnExportFile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // Requesting Permission to access External Storage
-             /*   ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
-                        EXTERNAL_STORAGE_PERMISSION_CODE);
-          */
                 String lStrFileData = Imei.getText().toString()+"\n"+Imsi.getText().toString()+"\n"+BtMac.getText().toString()+"\n"+
                         WifiMac.getText().toString()+"\n"+Version.getText().toString()+"\n"+AndroidName.getText()+"\n"+
-                        Model.getText().toString()+"\n" +mBatteryReceiver.getPercentage()+"\n"+mBatteryReceiver.status()+"\n"
+                        Model.getText().toString()+"\n" +"Battery Status  :"+mBatteryReceiver.getPercentage()+"  "+mBatteryReceiver.status()+"\n"
                         +Wifi.getText().toString()+"\n"+Cellular.getText().toString();
 
+                String state = Environment.getExternalStorageState();
+                if (Environment.MEDIA_MOUNTED.equals(state)) {
+                    if(Build.VERSION.SDK_INT >= 29){
+                        try {
+                            ContentValues values = new ContentValues();
 
+                            values.put(MediaStore.MediaColumns.DISPLAY_NAME, "DeviceInfo");       //file name
+                            values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");        //file extension, will automatically add to file
+                            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/DeviceInfo");
 
-                // Creating folder
-                File folder = getExternalFilesDir("DeviceInfo");
+                            Uri uri = getContentResolver().insert(MediaStore.Files.getContentUri("external"), values);
 
-                // Creating file with name Info.txt
-                File file = new File(folder, "Info.txt");
-                writeTextData(file, lStrFileData);
+                            OutputStream outputStream = getContentResolver().openOutputStream(uri);
 
+                            outputStream.write(lStrFileData.getBytes());
 
+                            outputStream.close();
 
+                            Toast.makeText(v.getContext(), "File created successfully in downloads folder", Toast.LENGTH_SHORT).show();
+                        } catch (IOException e) {
+                            Toast.makeText(v.getContext(), "Failed to create file", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                    else if (Build.VERSION.SDK_INT >= 23) {
+                        if (checkWritePermission()) {
+                            WritetoFile(lStrFileData);
+                        } else {
+                            requestWritePermission(); // Code for permission
+                        }
+                    } else {
+                        WritetoFile(lStrFileData);
+                    }
+                }
             }
         });
     }
 
     //write
-    private void writeTextData(File file, String data) {
-        FileOutputStream fileOutputStream = null;
+    public void WritetoFile(String data){
+        File externalStorageDirectory = Environment.getExternalStorageDirectory();
+        File dir = new File(externalStorageDirectory.getAbsolutePath() + "/DeviceInfo/");
+        dir.mkdir();
+        File file = new File(dir, "DeviceInfo.txt");
+        FileOutputStream os = null;
         try {
-            fileOutputStream = new FileOutputStream(file);
-            fileOutputStream.write(data.getBytes());
-            Toast.makeText(this, "Done" + file.getAbsolutePath(), Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (fileOutputStream != null) {
-                try {
-                    fileOutputStream.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
+            os = new FileOutputStream(file);
+            os.write(data.getBytes());
+            os.close();
+            Toast.makeText(getApplicationContext(), "File created successfully in DeviceInfo folder", Toast.LENGTH_SHORT).show();
+        } catch ( IOException e) {
+            Toast.makeText(getApplicationContext(), "Failed to create file", Toast.LENGTH_SHORT).show();
         }
     }
+    //check writing to external storage permission
+    private boolean checkWritePermission() {
+        int result = ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if (result == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+    // request to get permission to write
+    private void requestWritePermission() {
+        if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
+            Toast.makeText(MainActivity.this, "Write External Storage permission allows us to create files. Please allow this permission in App Settings.", Toast.LENGTH_LONG).show();
+        } else {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, WRITE_PERMISSION_REQUEST_CODE);
+        }
+    }
+
 
 
     // get Wifi Mac Address
@@ -257,8 +304,8 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     public void getBluetoothMacAddress() {
        try{ BluetoothAdapter m_BluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        String m_bluetoothAdd = m_BluetoothAdapter.getAddress();
-        BtMac.setText("BT-MAC  :"+m_bluetoothAdd);}
+        String lStrBluetoothAdapter = m_BluetoothAdapter.getAddress();
+        BtMac.setText("BT-MAC  :"+lStrBluetoothAdapter);}
        catch(Exception e){
             String macAddress = android.provider.Settings.Secure.getString(getApplicationContext().getContentResolver(), "bluetooth_address");
             BtMac.setText("BT-MAC  :"+macAddress);
@@ -300,6 +347,7 @@ public class MainActivity extends AppCompatActivity {
 
     //IMEI  &&  IMSI
     public void loadInfo() {
+
 
 
         // Check if the permissions are already available.
@@ -363,7 +411,7 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PERMISSIONS_REQUEST_CODE) {
             // Received permission result for READ_PHONE_STATE permission.est.");
             // Check if the only required permission has been granted
-            if (grantResults.length == 4 && grantResults[0] == PackageManager.PERMISSION_GRANTED &&
+            if (grantResults.length == 3 && grantResults[0] == PackageManager.PERMISSION_GRANTED &&
                     grantResults[1] == PackageManager.PERMISSION_GRANTED &&
                     grantResults[2] == PackageManager.PERMISSION_GRANTED
             ) {
@@ -499,36 +547,111 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
     }
 
+    //Request to enable Location Services
+    private void EnableGPSAutoMatically() {
+        GoogleApiClient googleApiClient = null;
+        if (googleApiClient == null) {
+            googleApiClient = new GoogleApiClient.Builder(this)
+                    .addApi(LocationServices.API).addConnectionCallbacks(this)
+                    .addOnConnectionFailedListener(this).build();
+            googleApiClient.connect();
+            LocationRequest locationRequest = LocationRequest.create();
+            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+            locationRequest.setInterval(30 * 1000);
+            locationRequest.setFastestInterval(5 * 1000);
+            LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder()
+                    .addLocationRequest(locationRequest);
 
-   public void statusCheck() {
-        final LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            // **************************
+            builder.setAlwaysShow(true);
+            // **************************
 
-        if (!manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            buildAlertMessageNoGps();
+            PendingResult<LocationSettingsResult> result = LocationServices.SettingsApi
+                    .checkLocationSettings(googleApiClient, builder.build());
+            result.setResultCallback(new ResultCallback<LocationSettingsResult>() {
+                @Override
+                public void onResult(LocationSettingsResult result) {
+                    final Status status = result.getStatus();
+                    final LocationSettingsStates state = result
+                            .getLocationSettingsStates();
+                    switch (status.getStatusCode()) {
+                        case LocationSettingsStatusCodes.SUCCESS:
+                            toast("GPS enabled");
+                            //getting cell info after turning on location
+                            getCellInfo();
+                            // All location settings are satisfied. The client can
+                            // initialize location
+                            // requests here.
+                            break;
+                        case LocationSettingsStatusCodes.RESOLUTION_REQUIRED:
+                            toast("GPS is not on");
+                            // Location settings are not satisfied. But could be
+                            // fixed by showing the user
+                            // a dialog.
+                            try {
+                                // Show the dialog by calling
+                                // startResolutionForResult(),
+                                // and check the result in onActivityResult().
+                                status.startResolutionForResult(MainActivity.this, 1000);
+
+                            } catch (IntentSender.SendIntentException e) {
+                                // Ignore the error.
+                            }
+                            break;
+                        case LocationSettingsStatusCodes.SETTINGS_CHANGE_UNAVAILABLE:
+                            toast("Setting change not allowed");
+                            // Location settings are not satisfied. However, we have
+                            // no way to fix the
+                            // settings so we won't show the dialog.
+                            //getting cell info after turning on location
+                            getCellInfo();
+                            break;
+                    }
+
+                }
+            });
 
         }
 
     }
 
-    private void buildAlertMessageNoGps() {
-        final AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setMessage("Your GPS seems to be disabled, please enable it")
-                .setCancelable(false)
-                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                    public void onClick(final DialogInterface dialog, final int id) {
-                        startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 
-
-                    }
-                })
-                .setNegativeButton("No", new DialogInterface.OnClickListener() {
-                    public void onClick(final DialogInterface dialog, final int id) {
-                        dialog.cancel();
-                    }
-                });
-        final AlertDialog alert = builder.create();
-        alert.show();
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 1000) {
+            if (resultCode == Activity.RESULT_OK) {
+                String result = data.getStringExtra("result");
+            }
+            if (resultCode == Activity.RESULT_CANCELED) {
+                //Write your code if there's no result
+            }
+        }
+        //getting cell info after turning on location
+        getCellInfo();
     }
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+        toast("Suspended");
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+        toast("Failed");
+    }
+    private void toast(String message) {
+        try {
+            Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
+        } catch (Exception ex) {
+            Log.i(message,"Window has been closed");
+        }
+    }
+
 }
 
 
