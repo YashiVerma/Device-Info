@@ -2,7 +2,6 @@ package com.example.deviceinfo;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -44,7 +43,6 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -66,159 +64,74 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 import static android.Manifest.permission.ACCESS_COARSE_LOCATION;
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
+import static android.Manifest.permission.READ_PHONE_STATE;
 
 
+public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener {
 
-public class MainActivity extends AppCompatActivity implements GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener  {
-
-
-    private static final int PERMISSIONS_REQUEST_CODE = 0;
+    private static final int PERMISSION_READ_PHONE_STATE = 0;
+    private static final int PERMISSION_FINE_LOCATION = 1;
+    private static final int PERMISSION_COARSE_LOCATION = 2;
     private static final int WRITE_PERMISSION_REQUEST_CODE = 100;
+    private static int permissionCount=0;
 
-
+    //XML Mapping
     TextView Imsi;
     TextView Imei;
     TextView Cellular;
     TextView Wifi, BtMac;
+    Button BtnExportFile;
+    TextView WifiMac;
+    TextView Version, AndroidName, Model;
 
-
+    //Battery reciever
     private BatteryReceiver mBatteryReceiver = new BatteryReceiver();
     private IntentFilter mIntentFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
 
 
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button BtnExportFile = (Button) findViewById(R.id.exportFile);
-        Imei = (TextView) findViewById(R.id.imei);
-        Imsi = (TextView) findViewById(R.id.imsi);
-        final TextView WifiMac = (TextView) findViewById(R.id.wifiMac);
-        BtMac = (TextView) findViewById(R.id.btMac);
-        final TextView Version = (TextView) findViewById(R.id.version);
-        final TextView AndroidName = (TextView) findViewById(R.id.name);
-        final TextView Model = (TextView) findViewById(R.id.model);
-        Wifi = (TextView) findViewById(R.id.wifi);
-        Cellular = (TextView) findViewById(R.id.cellular);
-        loadInfo();
-        final LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
-            getCellInfo();
-        else
-            EnableGPSAutoMatically();
-
-        getBluetoothMacAddress();
-
-
-
-                String lStRWifiMac = getWifiMacAddress();
-              WifiMac.setText("WIFI-MAC  :  " + lStRWifiMac);
-
-
-
-                Version.setText("Android Version  :  " + Build.VERSION.RELEASE);
-
-
-                //android version  name
-                String lStrVersionName = "";
-                int androidVersion = Build.VERSION.SDK_INT;
-                switch (androidVersion) {
-                    case 14:
-                        lStrVersionName = "14, Ice Cream Sandwich";
-                        break;
-                    case 15:
-                        lStrVersionName = "15, Ice Cream Sandwich";
-                        break;
-                    case 16:
-                        lStrVersionName = "16, Jelly Bean";
-                        break;
-                    case 17:
-                        lStrVersionName = "17, Jelly Bean";
-                        break;
-                    case 18:
-                        lStrVersionName = "18, Jelly Bean";
-                        break;
-                    case 19:
-                        lStrVersionName = "19, KitKat";
-                        break;
-                    case 21:
-                        lStrVersionName = "21, Lollipop";
-                        break;
-                    case 22:
-                        lStrVersionName = "22, Lollipop";
-                        break;
-                    case 23:
-                        lStrVersionName = "23, Marshmallow";
-                        break;
-                    case 24:
-                        lStrVersionName = "24, Nougat";
-                        break;
-                    case 25:
-                        lStrVersionName = "25, Nougat";
-                        break;
-                    case 26:
-                        lStrVersionName = "26, Oreo";
-                        break;
-                    case 27:
-                        lStrVersionName = "27, Oreo";
-                        break;
-                    case 28:
-                        lStrVersionName = "28, Pie";
-                        break;
-
-                    case 29:
-                        lStrVersionName = "29, Android 10";
-                        break;
-                    default:
-                        lStrVersionName = "not found";
-                        break;
-                }
-                AndroidName.setText("Android Name  :  " + lStrVersionName);
-
-                Model.setText("Model  :  " + Build.MODEL);
-
-
+        mapToXML();
+        if (checkAndGetPermission()) {
+//            loadInfo();
+            doPermissionGrantedStuffs();
+        }
 
 
         //export data to file
         BtnExportFile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                String lStrFileData = Imei.getText().toString()+"\n"+Imsi.getText().toString()+"\n"+BtMac.getText().toString()+"\n"+
-                        WifiMac.getText().toString()+"\n"+Version.getText().toString()+"\n"+AndroidName.getText()+"\n"+
-                        Model.getText().toString()+"\n" +"Battery Status  :"+mBatteryReceiver.getPercentage()+"  "+mBatteryReceiver.status()+"\n"
-                        +Wifi.getText().toString()+"\n"+Cellular.getText().toString();
+                String lStrFileData = Imei.getText().toString() + "\n" + Imsi.getText().toString() + "\n" + BtMac.getText().toString() + "\n" +
+                        WifiMac.getText().toString() + "\n" + Version.getText().toString() + "\n" + AndroidName.getText() + "\n" +
+                        Model.getText().toString() + "\n" + "Battery Status  :" + mBatteryReceiver.getPercentage() + "  " + mBatteryReceiver.status() + "\n"
+                        + Wifi.getText().toString() + "\n" + Cellular.getText().toString();
 
                 String state = Environment.getExternalStorageState();
                 if (Environment.MEDIA_MOUNTED.equals(state)) {
-                    if(Build.VERSION.SDK_INT >= 29){
+                    if (Build.VERSION.SDK_INT >= 29) {
                         try {
                             ContentValues values = new ContentValues();
-
                             values.put(MediaStore.MediaColumns.DISPLAY_NAME, "DeviceInfo");       //file name
                             values.put(MediaStore.MediaColumns.MIME_TYPE, "text/plain");        //file extension, will automatically add to file
                             values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/DeviceInfo");
-
                             Uri uri = getContentResolver().insert(MediaStore.Files.getContentUri("external"), values);
-
                             OutputStream outputStream = getContentResolver().openOutputStream(uri);
-
                             outputStream.write(lStrFileData.getBytes());
-
                             outputStream.close();
-
                             Toast.makeText(v.getContext(), "File created successfully in downloads folder", Toast.LENGTH_SHORT).show();
                         } catch (IOException e) {
                             Toast.makeText(v.getContext(), "Failed to create file", Toast.LENGTH_SHORT).show();
                         }
-                    }
-                    else if (Build.VERSION.SDK_INT >= 23) {
+                    } else if (Build.VERSION.SDK_INT >= 23) {
                         if (checkWritePermission()) {
                             WritetoFile(lStrFileData);
                         } else {
@@ -232,8 +145,29 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         });
     }
 
+    private void mapToXML() {
+        BtnExportFile = (Button) findViewById(R.id.exportFile);
+        Imei = (TextView) findViewById(R.id.imei);
+        Imsi = (TextView) findViewById(R.id.imsi);
+        WifiMac = (TextView) findViewById(R.id.wifiMac);
+        BtMac = (TextView) findViewById(R.id.btMac);
+        Version = (TextView) findViewById(R.id.version);
+        AndroidName = (TextView) findViewById(R.id.name);
+        Model = (TextView) findViewById(R.id.model);
+        Wifi = (TextView) findViewById(R.id.wifi);
+        Cellular = (TextView) findViewById(R.id.cellular);
+    }
+
+    private String getAndroidname(int androidVersion) {
+        if (GlobalShare.androidVersionName.containsKey(androidVersion)) {
+            return GlobalShare.androidVersionName.get(androidVersion);
+        } else {
+            return "Not Found";
+        }
+    }
+
     //write
-    public void WritetoFile(String data){
+    public void WritetoFile(String data) {
         File externalStorageDirectory = Environment.getExternalStorageDirectory();
         File dir = new File(externalStorageDirectory.getAbsolutePath() + "/DeviceInfo/");
         dir.mkdir();
@@ -244,10 +178,11 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             os.write(data.getBytes());
             os.close();
             Toast.makeText(getApplicationContext(), "File created successfully in DeviceInfo folder", Toast.LENGTH_SHORT).show();
-        } catch ( IOException e) {
+        } catch (IOException e) {
             Toast.makeText(getApplicationContext(), "Failed to create file", Toast.LENGTH_SHORT).show();
         }
     }
+
     //check writing to external storage permission
     private boolean checkWritePermission() {
         int result = ContextCompat.checkSelfPermission(MainActivity.this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE);
@@ -257,6 +192,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             return false;
         }
     }
+
     // request to get permission to write
     private void requestWritePermission() {
         if (ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this, android.Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
@@ -265,7 +201,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             ActivityCompat.requestPermissions(MainActivity.this, new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, WRITE_PERMISSION_REQUEST_CODE);
         }
     }
-
 
 
     // get Wifi Mac Address
@@ -299,16 +234,16 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
-
     //Bt Mac
-    @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN_MR2)
+
     public void getBluetoothMacAddress() {
-       try{ BluetoothAdapter m_BluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        String lStrBluetoothAdapter = m_BluetoothAdapter.getAddress();
-        BtMac.setText("BT-MAC  :"+lStrBluetoothAdapter);}
-       catch(Exception e){
+        try {
+            BluetoothAdapter m_BluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+            String lStrBluetoothAdapter = m_BluetoothAdapter.getAddress();
+            BtMac.setText("BT-MAC  :" + lStrBluetoothAdapter);
+        } catch (Exception e) {
             String macAddress = android.provider.Settings.Secure.getString(getApplicationContext().getContentResolver(), "bluetooth_address");
-            BtMac.setText("BT-MAC  :"+macAddress);
+            BtMac.setText("BT-MAC  :" + macAddress);
         }
 
     }
@@ -327,7 +262,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         }
     }
 
-
     //connected wifi
     public static String getCurrentSsid(Context context) {
         String ssid = null;
@@ -344,60 +278,69 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         return ssid;
     }
 
-
     //IMEI  &&  IMSI
     public void loadInfo() {
-
+        if (checkAndGetPermission()) {
+            doPermissionGrantedStuffs();
+        }
 
 
         // Check if the permissions are already available.
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
-                != PackageManager.PERMISSION_GRANTED &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+    /*    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE)
+                != PackageManager.PERMISSION_GRANTED ||
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
                 ActivityCompat.checkSelfPermission(this, ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             //  permissions has not been granted.
             requestPermissions();
         } else {
             //  permissions are already been granted.
             doPermissionGrantedStuffs();
-        }
+        }*/
     }
 
+    private boolean checkAndGetPermission() {
+        int permissionReadPhoneState = ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_PHONE_STATE);
+        int permissionFineLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
+        boolean result=true;
+        if (permissionReadPhoneState != PackageManager.PERMISSION_GRANTED) {
+            result=false;
+            askPermission(READ_PHONE_STATE,PERMISSION_READ_PHONE_STATE,"Need Read phone state permission");
+        }
+        else
+            permissionCount++;
 
-    /**
-     * Requests the permissions.
-     * If the permissions have been denied previously, a dialog will prompt the user to grant the
-     * permissions, otherwise it is requested directly.
-     */
-    private void requestPermissions() {
-        if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                Manifest.permission.READ_PHONE_STATE) &&
-                ActivityCompat.shouldShowRequestPermissionRationale(this,
-                        ACCESS_COARSE_LOCATION) &&
-                ActivityCompat.shouldShowRequestPermissionRationale(this,
-                        ACCESS_FINE_LOCATION)) {
-            // Provide an additional rationale to the user if the permission was not granted
-            // and the user would benefit from additional context for the use of the permission.
-            // For example if the user has previously denied the permission.
-            new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("Permission Request")
-                    .setMessage(getString(R.string.permissions_rationale))
-                    .setCancelable(false)
-                    .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+        if (permissionFineLocation != PackageManager.PERMISSION_GRANTED) {
+            result=false;
+            askPermission(ACCESS_FINE_LOCATION,PERMISSION_FINE_LOCATION,"Need location permission");
+        }
+        else
+            permissionCount++;
+        return result;
+    }
+
+    private void askPermission(String permission,int code,String message) {
+        if(ActivityCompat.shouldShowRequestPermissionRationale(this,permission))
+        {
+            new AlertDialog.Builder(this)
+                    .setTitle("Permission Needed")
+                    .setMessage(message)
+                    .setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                        @Override
                         public void onClick(DialogInterface dialog, int which) {
-                            //re-request
-                            ActivityCompat.requestPermissions(MainActivity.this,
-                                    new String[]{Manifest.permission.READ_PHONE_STATE, ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION},
-                                    PERMISSIONS_REQUEST_CODE);
+                            ActivityCompat.requestPermissions(MainActivity.this,new String[]{permission},code);
                         }
                     })
-
-                    .show();
-        } else {
-            // READ_PHONE_STATE permission has not been granted yet. Request it directly.
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_PHONE_STATE, ACCESS_COARSE_LOCATION
-                            , ACCESS_FINE_LOCATION},
-                    PERMISSIONS_REQUEST_CODE);
+                    .setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    }).create().show();
+        }
+        else
+        {
+            ActivityCompat.requestPermissions(this,new String[]{permission},code);
         }
     }
 
@@ -407,20 +350,26 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-        if (requestCode == PERMISSIONS_REQUEST_CODE) {
-            // Received permission result for READ_PHONE_STATE permission.est.");
-            // Check if the only required permission has been granted
-            if (grantResults.length == 3 && grantResults[0] == PackageManager.PERMISSION_GRANTED &&
-                    grantResults[1] == PackageManager.PERMISSION_GRANTED &&
-                    grantResults[2] == PackageManager.PERMISSION_GRANTED
-            ) {
-                //  permissions have been granted, proceed with displaying IMEI Number and other stuff
-                //alertAlert(getString(R.string.permisions_available));
-                doPermissionGrantedStuffs();
-            } else {
-                alertAlert(getString(R.string.permissions_not_granted));
-            }
+        switch (requestCode){
+            case PERMISSION_READ_PHONE_STATE:
+                if(grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                    permissionCount++;
+                }else{
+                    askPermission(READ_PHONE_STATE,PERMISSION_READ_PHONE_STATE,"Need Read phone state permission");
+                }
+                break;
+            case PERMISSION_FINE_LOCATION:
+                if(grantResults[0] == PackageManager.PERMISSION_GRANTED){
+                    permissionCount++;
+                }else{
+                    askPermission(ACCESS_FINE_LOCATION,PERMISSION_FINE_LOCATION,"Need location permission");
+                }
+                break;
+        }
+        if(permissionCount>=2){
+            doPermissionGrantedStuffs();
         }
     }
 
@@ -439,9 +388,26 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
+
+
     public void doPermissionGrantedStuffs() {
         Wifi.setText("Wifi Name   : " + getCurrentSsid(getApplicationContext()) + "\n"
                 + "Wifi Strength(Out of 5): " + getWifiStrengthPercentage(getApplicationContext()));
+        final LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER))
+            getCellInfo();
+        else
+            EnableGPSAutoMatically();
+        getBluetoothMacAddress();
+        String lStRWifiMac = getWifiMacAddress();
+        WifiMac.setText("WIFI-MAC  :  " + lStRWifiMac);
+
+        //Android version, model,name
+        Version.setText("Android Version  :  " + Build.VERSION.RELEASE);
+        int androidVersion = Build.VERSION.SDK_INT;
+        String lStrVersionName = getAndroidname(androidVersion);
+        AndroidName.setText("Android Name  :  " + lStrVersionName);
+        Model.setText("Model  :  " + Build.MODEL);
 
 
         if (android.os.Build.VERSION.SDK_INT >= 29) {
@@ -451,6 +417,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
             Imei.setText("IMEI   :" + lStrImei);
 
             Imsi.setText("IMSI  :  Not Accessible");
+
             return;
         }
 
@@ -470,7 +437,6 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     }
 
 
-
     //Cell Operator and Strength
     public void getCellInfo() {
         // cellular strength
@@ -483,7 +449,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         //Cellular Operator and Strength
         final LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         String CellularStrength = "PLEASE TURN ON LOCATION";
-       if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+        if (manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             if (ActivityCompat.checkSelfPermission(MainActivity.this, ACCESS_COARSE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED)
                 ActivityCompat.requestPermissions(MainActivity.this, new String[]{ACCESS_COARSE_LOCATION},
@@ -521,7 +487,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
                 }
             }
 
-            }
+        }
 
         Cellular.setText("Cellular Operator  : " + telephonyManager.getNetworkOperatorName() +
                 "\n" + "Cellular Strength : " + CellularStrength);
@@ -630,6 +596,7 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
         //getting cell info after turning on location
         getCellInfo();
     }
+
     @Override
     public void onConnected(@Nullable Bundle bundle) {
 
@@ -644,11 +611,12 @@ public class MainActivity extends AppCompatActivity implements GoogleApiClient.C
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
         toast("Failed");
     }
+
     private void toast(String message) {
         try {
             Toast.makeText(getApplicationContext(), message, Toast.LENGTH_SHORT).show();
         } catch (Exception ex) {
-            Log.i(message,"Window has been closed");
+            Log.i(message, "Window has been closed");
         }
     }
 
